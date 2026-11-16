@@ -1,0 +1,76 @@
+
+# =============================================================
+# .github/workflows/i9-automation.yml
+# =============================================================
+# Place this file in your GitHub repo at:
+#   .github/workflows/i9-automation.yml
+#
+# This runs the I-9 automation script every weekday at 7:00 AM
+# Mountain Time on GitHub's cloud servers — no PC required.
+# =============================================================
+
+name: I-9 Daily Automation
+
+on:
+  # Cron schedule (UTC) — 7:00 AM Mountain = 2:00 PM UTC (standard) / 1:00 PM UTC (daylight)
+  # Using 2:00 PM UTC to cover Mountain Standard Time
+  schedule:
+    - cron: '0 14 * * 1-5'  # Mon-Fri at 14:00 UTC (7:00 AM MT)
+
+  # Allow manual trigger from GitHub UI (Actions tab → Run workflow)
+  workflow_dispatch:
+
+jobs:
+  run-i9-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # 1. Check out the repo code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Set up Python
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 3. Install dependencies
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 4. Write Google service account key from secret to file
+      - name: Set up Google credentials
+        run: |
+          echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}' > google-sa-key.json
+
+      # 5. Run the I-9 automation script
+      - name: Run I-9 Automation
+        env:
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
+          GRAPH_SENDER_EMAIL: ${{ secrets.GRAPH_SENDER_EMAIL }}
+          GOOGLE_SERVICE_ACCOUNT_KEY: google-sa-key.json
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+        run: |
+          python i9_automation.py
+
+      # 6. Clean up credentials
+      - name: Clean up
+        if: always()
+        run: |
+          rm -f google-sa-key.json
+
+      # 7. Upload log as artifact (viewable in GitHub Actions UI)
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: i9-automation-log-${{ github.run_number }}
+          path: i9_automation.log
+          retention-days: 30
+
